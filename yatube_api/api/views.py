@@ -1,5 +1,4 @@
 from django.shortcuts import get_object_or_404
-from django.core.exceptions import PermissionDenied
 from rest_framework import viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -7,24 +6,16 @@ from rest_framework import status
 
 from posts.models import Post, Comment, Group
 from .serializers import PostSerializer, CommentSerializer, GroupSerializer
+from .permissions import PostPermission
 
 
 class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.all()
     serializer_class = PostSerializer
+    permission_classes = (PostPermission,)
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
-
-    def perform_update(self, serializer):
-        if serializer.instance.author != self.request.user:
-            raise PermissionDenied('Изменение чужого контента запрещено!')
-        super(PostViewSet, self).perform_update(serializer)
-
-    def perform_destroy(self, serializer):
-        if serializer.author != self.request.user:
-            raise PermissionDenied('Изменение чужого контента запрещено!')
-        super(PostViewSet, self).perform_destroy(serializer)
 
 
 class GroupViewSet(viewsets.ReadOnlyModelViewSet):
@@ -55,11 +46,11 @@ def api_comments_detail(request, pk, id):
         serializer = CommentSerializer(comment)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    if not request.user == comment.author:
-        return Response(status=status.HTTP_403_FORBIDDEN)
     # если пользователь, обратившийся к API, не является автором коммента,
     # то к методам, идущим после GET, мы его не пропускаем
     # и возвращаем ответ со статусом 403
+    if not request.user == comment.author:
+        return Response(status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'PUT' or request.method == 'PATCH':
         serializer = CommentSerializer(comment,
@@ -71,6 +62,6 @@ def api_comments_detail(request, pk, id):
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    elif request.method == 'DELETE':
+    if request.method == 'DELETE':
         comment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
